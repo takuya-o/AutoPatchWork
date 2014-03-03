@@ -404,17 +404,25 @@ function UpdateSiteinfo(callback, error_back, force) {
   siteinfo = [];
   xhr.onload = function () {
     var info;
-    try {
-      info = JSON.parse(xhr.responseText);
-      Siteinfo(info);
-      if (typeof callback === 'function') {
-        callback();
-      }
-    } catch (e) {
-      if (typeof error_back === 'function') {
+    if (xhr.status == 503 ) {
+      if (url === wedata) {
+        UpdateSiteinfo(callback, error_back, false);
+      } else if (typeof error_back === 'function') {
         error_back(e);
-      } else {
-        throw e;
+      }
+    } else {
+      try {
+        info = JSON.parse(xhr.responseText);
+        Siteinfo(info);
+        if (typeof callback === 'function') {
+          callback();
+        }
+      } catch (e) {
+        if (typeof error_back === 'function') {
+          error_back(e);
+        } else {
+          throw e;
+        }
       }
     }
   };
