@@ -313,7 +313,14 @@ function openOrFocusTab(uri) {
   }
 }
 function getWedataId(inf) {
-  return parseInt(inf.resource_url.replace('http://wedata.net/items/', ''), 10);
+  var ret = 0;
+  try {
+    ret = parseInt(inf.resource_url.replace('http://wedata.net/items/', ''), 10);
+  } catch (e) {
+    //TODO: 数字ならinf.dataのハッシュ値とか取りたい 
+    ret = inf.data.url;
+  }
+  return ret;
 }
 function applyCustom(info) {
   siteinfo.forEach(function (i) {
@@ -329,7 +336,7 @@ function applyCustom(info) {
 function Siteinfo(info) {
   var required_keys = ['nextLink', 'pageElement', 'url'];
   var keys = required_keys.concat(['insertBefore']);
-  siteinfo = [];
+  //外だし  siteinfo = [];
   info.forEach(function (i) {
     var d = i.data || i, r = {};
     var invalid = false;
@@ -397,21 +404,24 @@ function init_barcss() {
   AutoPatchWork.barcss = xhr.responseText;
 }
 function UpdateSiteinfo(callback, error_back, force) {
-  var sso = 'http://ss-o.net/json/wedataAutoPagerizeSITEINFO.json';
-  var wedata = 'http://wedata.net/databases/AutoPagerize/items.json';
-  var url = force ? wedata : sso;
+  var wedataold = 'https://raw.github.com/wedata/AutoPagerize/master/items-old.json';
+  var wedata = 'https://raw.github.com/wedata/AutoPagerize/master/items.json';
+  var url = force ? wedataold : wedata;
   var xhr = new XMLHttpRequest();
-  siteinfo = [];
+  if ( force ) {
+    //Resolve: 古いのでparseで例外するとDBが初期化されず積み重なる
+    siteinfo = [];
+  }
   xhr.onload = function () {
     var info;
     try {
       info = JSON.parse(xhr.responseText);
       Siteinfo(info);
-      if (typeof callback === 'function') {
+      if ((!force) && typeof callback === 'function') {
         callback();
       }
     } catch (e) {
-      if (typeof error_back === 'function') {
+      if ((!force) && typeof error_back === 'function') {
         error_back(e);
       } else {
         throw e;
@@ -419,12 +429,14 @@ function UpdateSiteinfo(callback, error_back, force) {
     }
   };
   xhr.onerror = function (e) {
-    if (url === wedata) {
-      UpdateSiteinfo(callback, error_back, false);
-    } else if (typeof error_back === 'function') {
+    if ((!force) && (typeof error_back === 'function') ) {
       error_back(e);
     }
   };
   xhr.open('GET', url, true);
   xhr.send(null);
+  //TODO: itemsに二重登録で古いものが有った時に新しいのが優先されるか不明
+  if ( force ) {
+    UpdateSiteinfo(callback, error_back, false);
+  }	
 }
