@@ -174,8 +174,6 @@
     }
 
     if (window.chrome) {
-      window.addEventListener('AutoPatchWork.load.from.page', load_for_chrome, false);
-      window.addEventListener('AutoPatchWork.error.from.page', load_error_for_chrome, false);
       request = request_for_chrome;
     }
     if ((next.host && next.host !== location.host) || (next.protocol && next.protocol !== location.protocol)) {
@@ -320,10 +318,6 @@
       window.removeEventListener('AutoPatchWork.DOMNodeInserted', restore_setup, false);
       window.removeEventListener('AutoPatchWork.state', state, false);
       window.removeEventListener('beforeunload', savePosition, false);
-      if (window.chrome) {
-        window.removeEventListener('AutoPatchWork.load.from.page', load_for_chrome, false);
-        window.removeEventListener('AutoPatchWork.error.from.page', load_error_for_chrome, false);
-      }
 
       if (status.bottom && status.bottom.parentNode) {
         status.bottom.parentNode.removeChild(status.bottom);
@@ -532,39 +526,21 @@
         loading = true;
       }
       var url = state.nextURL = next.href || next.getAttribute('href') || next.action || next.getAttribute('action') || next.value || next.getAttribute('value');
-      var s = document.createElement('script');
-      s.textContent = '(' + function (url) {
-        var x = new XMLHttpRequest();
-        x.onload = function () {
-          if (!x.getResponseHeader('Access-Control-Allow-Origin')) {
-            dispatch_message_event('AutoPatchWork.load.from.page', {responseText: x.responseText, url: url});
-          } else {
-            x.onerror();
-          }
-        };
-        x.onerror = function () {
-          dispatch_message_event('AutoPatchWork.error.from.page', {message: 'request failed. status:' + x.status});
-        };
-        x.open('GET', url, true);
-        x.overrideMimeType('text/html; charset=' + document.characterSet);
-        x.send(null);
-        function dispatch_message_event(name, data, o) {
-          o || (o = {});
-          var ev = document.createEvent('MessageEvent');
-          ev.initMessageEvent(name, o.canBubble || false, o.cancelable || false, data, o.origin || location.origin, o.id || Date.now(), o.source || window);
-          window.dispatchEvent(ev);
+
+      var x = new XMLHttpRequest();
+      x.onload = function () {
+        if (location.origin === (new URL(x.responseURL)).origin) {
+          dispatch_event('AutoPatchWork.load', {response: x, url: x.responseURL});
+        } else {
+          x.onerror();
         }
-      } + ')("' + url + '");';
-      document.head.appendChild(s);
-      document.head.removeChild(s);
-    }
-
-    function load_for_chrome(evt) {
-      dispatch_event('AutoPatchWork.load', {response: {responseText: evt.data.responseText}, url: evt.data.url});
-    }
-
-    function load_error_for_chrome(evt) {
-      dispatch_event('AutoPatchWork.error', {message: evt.data.message});
+      };
+      x.onerror = function () {
+        dispatch_event('AutoPatchWork.error', {message: 'request failed. status:' + x.status});
+      };
+      x.open('GET', url, true);
+      x.overrideMimeType('text/html; charset=' + document.characterSet);
+      x.send(null);
     }
 
     function request_iframe() {
@@ -676,6 +652,7 @@
       append_point.insertBefore(root, insert_point);
       var docHeight = documentHeight();
       var docs = get_next_elements(htmlDoc);
+      var elementHeight = pageElementHeight(docs[docs.length - 1]);
       var first = docs[0];
       if (!first) {
         dispatch_event('AutoPatchWork.terminated', {message: 'The next page\'s pageElement was empty.'});
@@ -683,6 +660,11 @@
         return;
       }
       docs.forEach(function (doc, i, docs) {
+        Array.prototype.forEach.call(doc.querySelectorAll('img'), function(img) {
+          if (!img.getAttribute('src').match(/(^https?:\/\/|^data:|^\/)/)) {
+            img.setAttribute('src', next.getAttribute('href').replace(/\/[\w:%#\$&\?\(\)~\.=\+\-]*$/, '/') + img.getAttribute('src'));
+          }
+        });
         var insert_node = append_point.insertBefore(document.importNode(doc, true), insert_point);
         var mutation = {
           targetNode: insert_node,
@@ -699,7 +681,7 @@
         docs[i] = insert_node;
       });
       if (status.bottom) status.bottom.style.height = Root.scrollHeight + 'px';
-      if (docHeight === documentHeight()) {
+      if (elementHeight === pageElementHeight(docs[docs.length - 1]) && docHeight === documentHeight()) {
         return dispatch_event('AutoPatchWork.error', {message: 'missing next page contents'});
       }
       next = get_next(htmlDoc);
@@ -723,6 +705,10 @@
 
     function documentHeight() {
       return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+    }
+    
+    function pageElementHeight(element) {
+      return element.parentNode.scrollHeight;
     }
 
     function createXHTML(str) {
